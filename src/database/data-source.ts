@@ -2,6 +2,27 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import * as dotenv from 'dotenv';
+// Import entities explicitly for better serverless support
+import { Shop } from '../entities/shop.entity';
+import { Product } from '../entities/product.entity';
+import { Variant } from '../entities/variant.entity';
+import { DemandRequest } from '../entities/demand-request.entity';
+import { RecoveryLink } from '../entities/recovery-link.entity';
+import { OrderAttribution } from '../entities/order-attribution.entity';
+import { ShopSettings } from '../entities/shop-settings.entity';
+import { ShopPlan } from '../entities/shop-plan.entity';
+
+// All entities array - explicit imports work better in serverless
+const entities = [
+  Shop,
+  Product,
+  Variant,
+  DemandRequest,
+  RecoveryLink,
+  OrderAttribution,
+  ShopSettings,
+  ShopPlan,
+];
 
 // Load environment variables for CLI usage
 // Try multiple paths to find .env file
@@ -25,8 +46,12 @@ for (const envPath of envPaths) {
 }
 
 export const getDataSourceOptions = (configService: ConfigService): DataSourceOptions => {
-  // Support both DATABASE_URL and DB_URL
-  const databaseUrl = configService.get<string>('DATABASE_URL') || configService.get<string>('DB_URL');
+  // Support multiple environment variable names (Vercel uses POSTGRES_URL, others use DATABASE_URL)
+  const databaseUrl = 
+    configService.get<string>('DATABASE_URL') ||
+    configService.get<string>('POSTGRES_URL') ||  // Vercel Postgres default
+    configService.get<string>('POSTGRES_PRISMA_URL') ||  // Vercel Prisma Postgres
+    configService.get<string>('DB_URL');
   
   if (databaseUrl) {
     // Parse DATABASE_URL format: postgresql:// or postgres://user:password@host:port/database
@@ -40,11 +65,18 @@ export const getDataSourceOptions = (configService: ConfigService): DataSourceOp
       username: url.username,
       password: url.password,
       database: url.pathname.slice(1), // Remove leading slash
-      entities: [join(__dirname, '../entities', '*.entity{.ts,.js}')],
-      synchronize: configService.get<string>('NODE_ENV') === 'development',
+      entities: entities,
+      synchronize: false, // Never use synchronize in production
       logging: configService.get<string>('NODE_ENV') === 'development',
-      migrations: ['dist/migrations/*.js'],
+      migrations: [join(__dirname, '../migrations', '*.js')],
       migrationsTableName: 'migrations',
+      migrationsRun: false, // Run migrations manually
+      // Connection pooling for serverless
+      extra: {
+        max: 1, // Serverless: use single connection per instance
+        connectionTimeoutMillis: 5000,
+        idleTimeoutMillis: 30000,
+      },
     };
   }
 
@@ -55,19 +87,30 @@ export const getDataSourceOptions = (configService: ConfigService): DataSourceOp
     username: configService.get<string>('DB_USERNAME', 'user'),
     password: configService.get<string>('DB_PASSWORD', 'password'),
     database: configService.get<string>('DB_NAME', 'stockpulse'),
-    entities: [join(__dirname, '../entities', '*.entity{.ts,.js}')],
-    synchronize: configService.get<string>('NODE_ENV') === 'development',
+    entities: entities,
+    synchronize: false, // Never use synchronize in production
     logging: configService.get<string>('NODE_ENV') === 'development',
-    migrations: ['dist/migrations/*.js'],
+    migrations: [join(__dirname, '../migrations', '*.js')],
     migrationsTableName: 'migrations',
+    migrationsRun: false, // Run migrations manually
+    // Connection pooling for serverless
+    extra: {
+      max: 1, // Serverless: use single connection per instance
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    },
   };
 };
 
 // Data source for CLI migrations
-// Parse DATABASE_URL or DB_URL if available, otherwise use individual env vars
+// Parse DATABASE_URL, POSTGRES_URL (Vercel), or DB_URL if available, otherwise use individual env vars
 function getDataSourceForCLI(): DataSourceOptions {
-  // Support both DATABASE_URL and DB_URL
-  const databaseUrl = process.env.DATABASE_URL || process.env.DB_URL;
+  // Support multiple environment variable names (Vercel uses POSTGRES_URL, others use DATABASE_URL)
+  const databaseUrl = 
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||  // Vercel Postgres default
+    process.env.POSTGRES_PRISMA_URL ||  // Vercel Prisma Postgres
+    process.env.DB_URL;
   
   if (databaseUrl) {
     // Normalize postgres:// to postgresql:// for URL parsing
