@@ -1,174 +1,58 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-import { NestFactory } from '@nestjs/core';
-import { ExpressAdapter } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { join } from 'path';
 
-// Import AppModule - try compiled first (after build), fallback to source (development)
-// In Vercel, __dirname is /var/task/api, process.cwd() is /var/task
-// We copy dist to api/dist during build, so it should be at api/dist/src/app.module
-let AppModule: any;
-const cwd = process.cwd(); // In Vercel: /var/task
-const apiDir = __dirname; // In Vercel: /var/task/api
+let cachedServer: express.Application | null = null;
 
-// Try multiple possible locations for the dist folder
-// In Vercel, the function root is /var/task, and api/ is a subdirectory
-// The root dist/ folder should be accessible from /var/task/dist/
-// Priority: root dist (most likely in Vercel) > api/dist > other locations
-const possiblePaths = [
-  join(cwd, 'dist', 'src', 'app.module'), // /var/task/dist/src/app.module (root dist - most likely)
-  join(apiDir, '..', 'dist', 'src', 'app.module'), // ../dist/src/app.module (relative from api/)
-  join(apiDir, 'dist', 'src', 'app.module'), // api/dist/src/app.module (if copied)
-  join(__dirname, 'dist', 'src', 'app.module'), // ./dist/src/app.module (relative to compiled index.js)
-];
-
-let lastError: Error | null = null;
-for (const modulePath of possiblePaths) {
-  try {
-    // Try loading the module
-    const module = require(modulePath);
-    AppModule = module.AppModule || module.default?.AppModule || module;
-    if (AppModule) {
-      console.log(`✅ Loaded AppModule from: ${modulePath}`);
-      break;
-    }
-  } catch (e) {
-    lastError = e as Error;
-    const errorMsg = (e as Error).message;
-    console.log(`❌ Failed to load from ${modulePath}:`, errorMsg.substring(0, 100));
-    // Don't continue if it's a different error (like syntax error)
-    if (!errorMsg.includes('Cannot find module')) {
-      console.error(`Unexpected error loading from ${modulePath}:`, errorMsg);
-    }
-    continue;
+async function bootstrap(): Promise<express.Application> {
+  if (cachedServer) {
+    return cachedServer;
   }
-}
 
-if (!AppModule) {
-  console.error('Failed to load AppModule from all possible paths:', {
-    tried: possiblePaths,
-    cwd,
-    __dirname: apiDir,
-    lastError: lastError?.message,
+  const server = express();
+
+  // Import AppModule from the correct path: dist/src/app.module
+  // NestJS preserves source directory structure: src/app.module.ts → dist/src/app.module.js
+  // Use require() at runtime (not import) to avoid TypeScript checking during build
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { AppModule } = require('../dist/src/app.module');
+  const { NestFactory } = await import('@nestjs/core');
+  const { ExpressAdapter } = await import('@nestjs/platform-express');
+  const { ValidationPipe } = await import('@nestjs/common');
+
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
+    logger: ['error', 'warn', 'log'],
+    rawBody: true, // Enable raw body for webhook HMAC verification
+    bufferLogs: true,
   });
-  throw new Error(
-    `Cannot load AppModule. Tried: ${possiblePaths.join(', ')}. Make sure npm run vercel-build completed successfully.`,
+
+  // Global validation pipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
   );
-}
 
-// Setup Redis error handling (optional - won't crash if Redis unavailable)
-try {
-  let setupRedisErrorHandling: (() => void) | undefined;
-  const redisHandlerPaths = [
-    join(apiDir, 'dist', 'src', 'jobs', 'redis-error-handler'), // api/dist/src/jobs/redis-error-handler
-    join(__dirname, 'dist', 'src', 'jobs', 'redis-error-handler'), // ./dist/src/jobs/redis-error-handler
-    join(process.cwd(), 'dist', 'src', 'jobs', 'redis-error-handler'), // root dist
-    join(apiDir, '..', 'dist', 'src', 'jobs', 'redis-error-handler'), // ../dist/src/jobs/redis-error-handler
-  ];
+  // NOTE: CORS is handled manually in the handler function below
+  // Don't use app.enableCors() to avoid conflicts with manual CORS handling
 
-  for (const redisHandlerPath of redisHandlerPaths) {
-    try {
-      const redisHandler = require(redisHandlerPath);
-      setupRedisErrorHandling = redisHandler?.setupRedisErrorHandling;
-      if (setupRedisErrorHandling) {
-        setupRedisErrorHandling();
-        console.log(`Redis error handler initialized from: ${redisHandlerPath}`);
-        break;
-      }
-    } catch (e) {
-      // Try next path
-      continue;
-    }
-  }
-} catch (e) {
-  // Redis setup is optional - continue without it
-  console.warn('Redis error handler not available, continuing without it');
-}
-
-let cachedApp: express.Application | null = null;
-let initializationPromise: Promise<express.Application> | null = null;
-
-async function createApp(): Promise<express.Application> {
-  // Return cached app if available
-  if (cachedApp) {
-    return cachedApp;
+  console.log('[INIT] Initializing NestJS app...');
+  try {
+    await app.init();
+    console.log('[INIT] ✅ NestJS app initialized successfully');
+  } catch (initError) {
+    // Log but don't fail - allow app to start even if some services fail
+    console.error('[INIT] ⚠️ app.init() encountered errors (continuing anyway):', {
+      message: (initError as Error)?.message,
+      name: (initError as Error)?.name,
+    });
   }
 
-  // If already initializing, wait for it
-  if (initializationPromise) {
-    return initializationPromise;
-  }
-
-  // Start initialization
-  initializationPromise = (async () => {
-    try {
-      console.log('[INIT] Initializing NestJS application...');
-      console.log('[INIT] Environment check:', {
-        hasDatabaseUrl: !!process.env.DATABASE_URL,
-        hasPostgresUrl: !!process.env.POSTGRES_URL,
-        hasPostgresPrismaUrl: !!process.env.POSTGRES_PRISMA_URL,
-        nodeEnv: process.env.NODE_ENV,
-        cwd: process.cwd(),
-        __dirname,
-      });
-
-      const expressApp = express();
-      console.log('[INIT] Creating NestJS app with ExpressAdapter...');
-
-      const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
-        logger: ['error', 'warn', 'log'],
-        rawBody: true, // Enable raw body for webhook HMAC verification
-      });
-
-      console.log('[INIT] NestJS app created, setting up middleware...');
-
-      // NOTE: CORS is handled manually in the handler function below
-      // Disable NestJS CORS to avoid conflicts with manual CORS handling
-      // app.enableCors() is skipped - we handle it manually for better serverless compatibility
-
-      // Global validation pipe
-      app.useGlobalPipes(
-        new ValidationPipe({
-          whitelist: true,
-          forbidNonWhitelisted: true,
-          transform: true,
-        }),
-      );
-
-      console.log('[INIT] Calling app.init()...');
-      // Initialize the app (this connects to database, Redis, etc.)
-      try {
-        await app.init();
-        console.log('[INIT] ✅ app.init() completed');
-      } catch (initError) {
-        // Log but don't fail - allow app to start even if some services fail
-        console.error('[INIT] ⚠️ app.init() encountered errors (continuing anyway):', {
-          message: (initError as Error)?.message,
-          name: (initError as Error)?.name,
-          stack: (initError as Error)?.stack?.split('\n').slice(0, 5).join('\n'),
-        });
-        // Continue - app might still work for routes that don't need DB/Redis
-      }
-
-      console.log('[INIT] ✅ NestJS application initialized successfully');
-      cachedApp = expressApp;
-      return expressApp;
-    } catch (error) {
-      console.error('[INIT] ❌ Failed to initialize NestJS app');
-      console.error('[INIT] Error type:', (error as any)?.constructor?.name);
-      console.error('[INIT] Error message:', (error as Error)?.message);
-      console.error('[INIT] Error stack:', (error as Error)?.stack);
-      if ((error as any)?.cause) {
-        console.error('[INIT] Error cause:', (error as any).cause);
-      }
-      initializationPromise = null; // Reset so we can retry
-      throw error;
-    }
-  })();
-
-  return initializationPromise;
+  cachedServer = server;
+  return server;
 }
 
 /**
@@ -228,14 +112,14 @@ export default async function handler(req: Request, res: Response) {
     // Set CORS headers for all requests
     setCorsHeaders(req, res);
 
-    console.log('[HANDLER] Creating/getting app instance...');
-    const app = await createApp();
-    console.log('[HANDLER] App instance ready, forwarding request to Express');
+    console.log('[HANDLER] Bootstrapping app...');
+    const server = await bootstrap();
+    console.log('[HANDLER] App ready, forwarding request to Express');
 
     // Forward request to Express app
     // Wrap in promise to handle Express async callback
     return new Promise<void>((resolve, reject) => {
-      app(req, res, (err?: any) => {
+      server(req, res, (err?: any) => {
         if (err) {
           console.error('[HANDLER] Express error:', err);
           reject(err);
@@ -249,7 +133,6 @@ export default async function handler(req: Request, res: Response) {
     console.error('[HANDLER] Error type:', (error as any)?.constructor?.name);
     console.error('[HANDLER] Error message:', (error as Error)?.message);
     console.error('[HANDLER] Error stack:', (error as Error)?.stack);
-    console.error('[HANDLER] Full error:', error);
 
     // Ensure response is sent with CORS headers
     if (!res.headersSent) {
