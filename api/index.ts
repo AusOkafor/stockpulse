@@ -64,7 +64,7 @@ async function createApp(): Promise<express.Application> {
       console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
       console.log('POSTGRES_URL exists:', !!process.env.POSTGRES_URL);
       console.log('NODE_ENV:', process.env.NODE_ENV);
-      
+
       const expressApp = express();
       const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
         logger: ['error', 'warn', 'log'],
@@ -75,7 +75,7 @@ async function createApp(): Promise<express.Application> {
       const nodeEnv = process.env.NODE_ENV || 'production';
       const frontendUrl = process.env.FRONTEND_URL;
       const isDevelopment = nodeEnv === 'development';
-      
+
       app.enableCors({
         origin: (origin, callback) => {
           // Allow requests with no origin (mobile apps, Postman, etc.)
@@ -83,25 +83,29 @@ async function createApp(): Promise<express.Application> {
             callback(null, true);
             return;
           }
-          
+
           // In development, allow localhost on any port
-          if (isDevelopment || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+          if (
+            isDevelopment ||
+            origin.startsWith('http://localhost:') ||
+            origin.startsWith('http://127.0.0.1:')
+          ) {
             callback(null, true);
             return;
           }
-          
+
           // In production, allow specific frontend URL
           if (frontendUrl && (origin === frontendUrl || origin.startsWith(frontendUrl))) {
             callback(null, true);
             return;
           }
-          
+
           // Allow Vercel preview deployments (any vercel.app domain)
           if (origin.includes('.vercel.app')) {
             callback(null, true);
             return;
           }
-          
+
           // Default: reject
           callback(new Error('Not allowed by CORS'));
         },
@@ -130,7 +134,7 @@ async function createApp(): Promise<express.Application> {
 
       // Initialize the app
       await app.init();
-      
+
       console.log('NestJS application initialized successfully');
       cachedApp = expressApp;
       return expressApp;
@@ -145,8 +149,62 @@ async function createApp(): Promise<express.Application> {
   return initializationPromise;
 }
 
+/**
+ * Handle CORS headers manually for serverless environment
+ */
+function setCorsHeaders(req: Request, res: Response): void {
+  const origin = req.headers.origin || '';
+  const nodeEnv = process.env.NODE_ENV || 'production';
+  const frontendUrl = process.env.FRONTEND_URL;
+  const isDevelopment = nodeEnv === 'development';
+
+  let allowOrigin = false;
+
+  // Allow requests with no origin (mobile apps, Postman, etc.)
+  if (!origin) {
+    allowOrigin = true;
+  }
+  // Allow localhost in development
+  else if (
+    isDevelopment ||
+    origin.startsWith('http://localhost:') ||
+    origin.startsWith('http://127.0.0.1:')
+  ) {
+    allowOrigin = true;
+  }
+  // Allow production frontend URL
+  else if (frontendUrl && (origin === frontendUrl || origin.startsWith(frontendUrl))) {
+    allowOrigin = true;
+  }
+  // Allow Vercel preview deployments
+  else if (origin.includes('.vercel.app')) {
+    allowOrigin = true;
+  }
+
+  if (allowOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, X-Shopify-Topic, X-Shopify-Shop-Domain, X-Shopify-Hmac-Sha256, X-Requested-With',
+    );
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+}
+
 export default async function handler(req: Request, res: Response) {
+  // Handle CORS preflight (OPTIONS) requests immediately
+  if (req.method === 'OPTIONS') {
+    setCorsHeaders(req, res);
+    res.status(204).end();
+    return;
+  }
+
   try {
+    // Set CORS headers for all requests
+    setCorsHeaders(req, res);
+
     const app = await createApp();
     return app(req, res);
   } catch (error) {
@@ -156,14 +214,16 @@ export default async function handler(req: Request, res: Response) {
       stack: (error as Error)?.stack,
       name: (error as Error)?.name,
     });
-    
-    // Ensure response is sent
+
+    // Ensure response is sent with CORS headers
     if (!res.headersSent) {
+      setCorsHeaders(req, res);
+
       const isProduction = process.env.NODE_ENV === 'production';
       const errorMessage = isProduction
         ? 'Internal Server Error'
         : (error as Error)?.message || 'Unknown error';
-      
+
       const response: any = {
         error: 'Internal Server Error',
         message: errorMessage,
@@ -179,4 +239,3 @@ export default async function handler(req: Request, res: Response) {
     }
   }
 }
-
