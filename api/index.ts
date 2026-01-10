@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import { join } from 'path';
 
 // Import AppModule - try compiled first (after build), fallback to source (development)
@@ -101,7 +103,7 @@ async function createApp(): Promise<express.Application> {
 
       const expressApp = express();
       console.log('[INIT] Creating NestJS app with ExpressAdapter...');
-      
+
       const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
         logger: ['error', 'warn', 'log'],
         rawBody: true, // Enable raw body for webhook HMAC verification
@@ -205,9 +207,9 @@ export default async function handler(req: Request, res: Response) {
     console.log('[HANDLER] Creating/getting app instance...');
     const app = await createApp();
     console.log('[HANDLER] App instance ready, forwarding request to Express');
-    
+
     // Forward request to Express app
-    // Use a promise wrapper to handle Express callbacks properly
+    // Wrap in promise to handle Express async callback
     return new Promise<void>((resolve, reject) => {
       app(req, res, (err?: any) => {
         if (err) {
