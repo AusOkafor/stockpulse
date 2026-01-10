@@ -71,13 +71,52 @@ async function createApp(): Promise<express.Application> {
         rawBody: true, // Enable raw body for webhook HMAC verification
       });
 
-      // Configure CORS for production
-      const frontendUrl = process.env.FRONTEND_URL || '*';
+      // Configure CORS - support both development (localhost) and production
+      const nodeEnv = process.env.NODE_ENV || 'production';
+      const frontendUrl = process.env.FRONTEND_URL;
+      const isDevelopment = nodeEnv === 'development';
+      
       app.enableCors({
-        origin: frontendUrl,
+        origin: (origin, callback) => {
+          // Allow requests with no origin (mobile apps, Postman, etc.)
+          if (!origin) {
+            callback(null, true);
+            return;
+          }
+          
+          // In development, allow localhost on any port
+          if (isDevelopment || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+            callback(null, true);
+            return;
+          }
+          
+          // In production, allow specific frontend URL
+          if (frontendUrl && (origin === frontendUrl || origin.startsWith(frontendUrl))) {
+            callback(null, true);
+            return;
+          }
+          
+          // Allow Vercel preview deployments (any vercel.app domain)
+          if (origin.includes('.vercel.app')) {
+            callback(null, true);
+            return;
+          }
+          
+          // Default: reject
+          callback(new Error('Not allowed by CORS'));
+        },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Shopify-Topic', 'X-Shopify-Shop-Domain', 'X-Shopify-Hmac-Sha256'],
+        allowedHeaders: [
+          'Content-Type',
+          'Authorization',
+          'X-Shopify-Topic',
+          'X-Shopify-Shop-Domain',
+          'X-Shopify-Hmac-Sha256',
+          'X-Requested-With',
+        ],
+        exposedHeaders: ['Content-Type', 'Authorization'],
+        maxAge: 86400, // 24 hours
       });
 
       // Global validation pipe
