@@ -27,7 +27,16 @@ import { getDataSourceOptions } from './database/data-source';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
         try {
-          return getDataSourceOptions(configService);
+          const options = getDataSourceOptions(configService);
+          // Add retry logic for serverless cold starts
+          return {
+            ...options,
+            // Retry connection on failure
+            retryAttempts: 3,
+            retryDelay: 3000,
+            // Don't auto-connect - connect lazily
+            // This is handled by NestJS TypeORM module
+          };
         } catch (error) {
           console.error('[AppModule] Failed to get DataSource options:', error);
           // Return minimal config to allow app to start

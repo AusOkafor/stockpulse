@@ -47,16 +47,27 @@ for (const envPath of envPaths) {
 
 export const getDataSourceOptions = (configService: ConfigService): DataSourceOptions => {
   // Support multiple environment variable names (Vercel uses POSTGRES_URL, others use DATABASE_URL)
+  // IMPORTANT: Don't use POSTGRES_PRISMA_URL (Prisma Accelerate proxy) - use direct connection
   const databaseUrl = 
     configService.get<string>('DATABASE_URL') ||
-    configService.get<string>('POSTGRES_URL') ||  // Vercel Postgres default
-    configService.get<string>('POSTGRES_PRISMA_URL') ||  // Vercel Prisma Postgres
+    configService.get<string>('POSTGRES_URL') ||  // Vercel Postgres direct connection
     configService.get<string>('DB_URL');
   
-  if (databaseUrl) {
+  // Skip Prisma Accelerate URLs - they don't work with TypeORM
+  if (databaseUrl && databaseUrl.includes('prisma-data.net')) {
+    console.warn('[DataSource] Skipping Prisma Accelerate URL - use POSTGRES_URL instead');
+  }
+  
+  if (databaseUrl && !databaseUrl.includes('prisma-data.net')) {
     // Parse DATABASE_URL format: postgresql:// or postgres://user:password@host:port/database
     // Normalize postgres:// to postgresql:// for URL parsing
-    const normalizedUrl = databaseUrl.replace(/^postgres:\/\//, 'postgresql://');
+    let normalizedUrl = databaseUrl.replace(/^postgres:\/\//, 'postgresql://');
+    
+    // Handle Prisma Accelerate format (but we shouldn't get here due to check above)
+    if (normalizedUrl.includes('accelerate.prisma-data.net')) {
+      throw new Error('Cannot use Prisma Accelerate URL with TypeORM. Use POSTGRES_URL for direct connection.');
+    }
+    
     const url = new URL(normalizedUrl);
     return {
       type: 'postgres',

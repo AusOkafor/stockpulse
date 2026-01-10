@@ -125,8 +125,19 @@ async function createApp(): Promise<express.Application> {
       );
 
       console.log('[INIT] Calling app.init()...');
-      // Initialize the app (this connects to database, etc.)
-      await app.init();
+      // Initialize the app (this connects to database, Redis, etc.)
+      try {
+        await app.init();
+        console.log('[INIT] ✅ app.init() completed');
+      } catch (initError) {
+        // Log but don't fail - allow app to start even if some services fail
+        console.error('[INIT] ⚠️ app.init() encountered errors (continuing anyway):', {
+          message: (initError as Error)?.message,
+          name: (initError as Error)?.name,
+          stack: (initError as Error)?.stack?.split('\n').slice(0, 5).join('\n'),
+        });
+        // Continue - app might still work for routes that don't need DB/Redis
+      }
 
       console.log('[INIT] ✅ NestJS application initialized successfully');
       cachedApp = expressApp;
