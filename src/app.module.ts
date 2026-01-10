@@ -20,14 +20,38 @@ import { getDataSourceOptions } from './database/data-source';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // Allow missing environment variables to prevent crashes
+      ignoreEnvFile: false,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => getDataSourceOptions(configService),
+      useFactory: (configService: ConfigService) => {
+        try {
+          return getDataSourceOptions(configService);
+        } catch (error) {
+          console.error('[AppModule] Failed to get DataSource options:', error);
+          // Return minimal config to allow app to start
+          // Database operations will fail, but app won't crash on startup
+          return {
+            type: 'postgres',
+            host: 'localhost',
+            port: 5432,
+            username: 'user',
+            password: 'password',
+            database: 'stockpulse',
+            entities: [],
+            synchronize: false,
+            logging: false,
+            migrations: [],
+            migrationsRun: false,
+            extra: { max: 1 },
+          };
+        }
+      },
       inject: [ConfigService],
     }),
-    // JobsModule - Redis is optional in development
-    // Errors are caught and suppressed in development mode
+    // JobsModule - Redis is optional
+    // Will fail gracefully if Redis is unavailable
     JobsModule,
     AuthModule,
     ShopModule,

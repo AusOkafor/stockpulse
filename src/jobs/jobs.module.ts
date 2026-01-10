@@ -13,28 +13,17 @@ import { ExpireRecoveryLinksJob } from './expire-recovery-links.job';
         const nodeEnv = configService.get<string>('NODE_ENV', 'development');
         const isDevelopment = nodeEnv === 'development';
         
-        // Base connection config
+        // Base connection config - optimize for serverless
         const baseConfig: any = {
-          maxRetriesPerRequest: isDevelopment ? null : 3,
-          enableOfflineQueue: false,
-          lazyConnect: true, // Always lazy connect to avoid immediate connection attempts
-          enableReadyCheck: !isDevelopment,
-          connectTimeout: isDevelopment ? 500 : 10000,
-          retryStrategy: (times: number) => {
-            if (isDevelopment) {
-              // In development, stop retrying immediately to avoid error spam
-              return null;
-            }
-            // In production, retry with exponential backoff
-            return Math.min(times * 50, 2000);
-          },
-          // Suppress connection errors in development
-          showFriendlyErrorStack: !isDevelopment,
-          // Add error handlers to suppress connection errors
-          ...(isDevelopment && {
-            reconnectOnError: () => false, // Don't reconnect on error in dev
-            maxRetriesPerRequest: null,
-          }),
+          maxRetriesPerRequest: null, // Don't retry in serverless (fail fast)
+          enableOfflineQueue: false, // Don't queue when offline
+          lazyConnect: true, // Lazy connect to avoid blocking startup
+          enableReadyCheck: false, // Skip ready check in serverless
+          connectTimeout: 2000, // Fast timeout for serverless
+          commandTimeout: 2000, // Fast command timeout
+          retryStrategy: () => null, // Don't retry (fail immediately)
+          showFriendlyErrorStack: false,
+          reconnectOnError: () => false, // Don't auto-reconnect
         };
         
         if (redisUrl) {
@@ -54,6 +43,7 @@ import { ExpireRecoveryLinksJob } from './expire-recovery-links.job';
           }
         }
 
+        // If no Redis URL, use localhost (will fail gracefully)
         return {
           connection: {
             ...baseConfig,

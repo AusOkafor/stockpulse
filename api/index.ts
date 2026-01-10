@@ -202,15 +202,28 @@ export default async function handler(req: Request, res: Response) {
     // Set CORS headers for all requests
     setCorsHeaders(req, res);
 
+    console.log('[HANDLER] Creating/getting app instance...');
     const app = await createApp();
-    return app(req, res);
-  } catch (error) {
-    console.error('Serverless function error:', error);
-    console.error('Error details:', {
-      message: (error as Error)?.message,
-      stack: (error as Error)?.stack,
-      name: (error as Error)?.name,
+    console.log('[HANDLER] App instance ready, forwarding request to Express');
+    
+    // Forward request to Express app
+    // Use a promise wrapper to handle Express callbacks properly
+    return new Promise<void>((resolve, reject) => {
+      app(req, res, (err?: any) => {
+        if (err) {
+          console.error('[HANDLER] Express error:', err);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
     });
+  } catch (error) {
+    console.error('[HANDLER] ❌ Serverless function error');
+    console.error('[HANDLER] Error type:', (error as any)?.constructor?.name);
+    console.error('[HANDLER] Error message:', (error as Error)?.message);
+    console.error('[HANDLER] Error stack:', (error as Error)?.stack);
+    console.error('[HANDLER] Full error:', error);
 
     // Ensure response is sent with CORS headers
     if (!res.headersSent) {
@@ -233,6 +246,11 @@ export default async function handler(req: Request, res: Response) {
       }
 
       res.status(500).json(response);
+    } else {
+      // Headers already sent, but we still need to end the response
+      if (!res.writableEnded) {
+        res.end();
+      }
     }
   }
 }
