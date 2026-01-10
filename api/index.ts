@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
-import * as express from 'express';
+import express, { Request, Response } from 'express';
 
 // Import AppModule - try compiled first (after build), fallback to source (development)
 let AppModule: any;
@@ -106,7 +106,7 @@ async function createApp(): Promise<express.Application> {
   return initializationPromise;
 }
 
-export default async function handler(req: express.Request, res: express.Response) {
+export default async function handler(req: Request, res: Response) {
   try {
     const app = await createApp();
     return app(req, res);
