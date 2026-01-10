@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 build/
+api/dist/  # Copied dist for Vercel serverless (created during build, not committed)
 
 # Environment variables
 .env
