@@ -1,0 +1,35 @@
+# Backend-specific Vercel ignore
+
+# Source files (only dist is needed)
+src/
+!src/database/data-source.ts
+!src/migrations/
+
+# Documentation (not needed in deployment)
+*.md
+!README.md
+
+# Development files
+.env
+.env.local
+.env.development
+.env.test
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+test/
+coverage/
+
+# Development tools
+.vscode/
+.idea/
+*.log
+
+# Prisma (migrations are handled separately)
+prisma/
+!prisma/migrations/
+
+# Scripts (not needed in serverless)
+scripts/
+
