@@ -5,68 +5,67 @@ import express, { Request, Response } from 'express';
 import { join } from 'path';
 
 // Import AppModule - try compiled first (after build), fallback to source (development)
-// In Vercel, __dirname points to the compiled location (api/ directory)
-// NestJS compiles src/ to dist/src/, so the path is dist/src/app.module
+// In Vercel, __dirname is /var/task/api, process.cwd() is /var/task
+// We copy dist to api/dist during build, so it should be at api/dist/src/app.module
 let AppModule: any;
-const distPath = join(__dirname, '..', 'dist', 'src', 'app.module');
-const srcPath = join(__dirname, '..', 'src', 'app.module');
+const cwd = process.cwd(); // In Vercel: /var/task
+const apiDir = __dirname; // In Vercel: /var/task/api
 
-try {
-  // After Vercel build, import from dist/src/app.module (NestJS output structure)
-  AppModule = require(distPath).AppModule;
-  console.log(`Loaded AppModule from dist: ${distPath}`);
-} catch (e) {
-  console.log(`Failed to load from dist (${distPath}):`, e.message);
-  // During development or if dist doesn't exist, try alternative paths
+// Try multiple possible locations for the dist folder
+// Priority: api/dist (copied during build) > root dist > other locations
+const possiblePaths = [
+  join(apiDir, 'dist', 'src', 'app.module'), // Copied during build: api/dist/src/app.module
+  join(cwd, 'dist', 'src', 'app.module'), // Root dist: /var/task/dist/src/app.module
+  join(apiDir, '..', 'dist', 'src', 'app.module'), // Relative to api: ../dist/src/app.module
+];
+
+let lastError: Error | null = null;
+for (const modulePath of possiblePaths) {
   try {
-    // Try process.cwd() path (sometimes Vercel structures it differently)
-    const altPath = join(process.cwd(), 'dist', 'src', 'app.module');
-    AppModule = require(altPath).AppModule;
-    console.log(`Loaded AppModule from process.cwd: ${altPath}`);
-  } catch (e3) {
-    console.log(`Failed to load from process.cwd:`, e3.message);
-    // Last resort: try source (won't work in production but helps debug)
-    try {
-      AppModule = require(srcPath).AppModule;
-      console.log(`Loaded AppModule from src: ${srcPath}`);
-    } catch (e2) {
-      console.error('Failed to load AppModule from all paths:', {
-        distPath,
-        altPath: join(process.cwd(), 'dist', 'src', 'app.module'),
-        srcPath,
-        cwd: process.cwd(),
-        __dirname,
-        distError: e.message,
-        altError: e3.message,
-        srcError: e2.message,
-      });
-      throw new Error(
-        `Cannot load AppModule. Tried: ${distPath}, ${join(process.cwd(), 'dist', 'src', 'app.module')}, ${srcPath}. Make sure to run npm run build first.`,
-      );
-    }
+    AppModule = require(modulePath).AppModule;
+    console.log(`✅ Loaded AppModule from: ${modulePath}`);
+    break;
+  } catch (e) {
+    lastError = e as Error;
+    console.log(`❌ Failed to load from ${modulePath}:`, (e as Error).message);
+    continue;
   }
+}
+
+if (!AppModule) {
+  console.error('Failed to load AppModule from all possible paths:', {
+    tried: possiblePaths,
+    cwd,
+    __dirname: apiDir,
+    lastError: lastError?.message,
+  });
+  throw new Error(
+    `Cannot load AppModule. Tried: ${possiblePaths.join(', ')}. Make sure npm run vercel-build completed successfully.`,
+  );
 }
 
 // Setup Redis error handling (optional - won't crash if Redis unavailable)
 try {
   let setupRedisErrorHandling: (() => void) | undefined;
-  try {
-    // NestJS compiles src/jobs to dist/src/jobs
-    const redisHandlerPath = join(__dirname, '..', 'dist', 'src', 'jobs', 'redis-error-handler');
-    const redisHandler = require(redisHandlerPath);
-    setupRedisErrorHandling = redisHandler?.setupRedisErrorHandling;
-  } catch (e) {
+  const redisHandlerPaths = [
+    join(__dirname, 'dist', 'src', 'jobs', 'redis-error-handler'), // api/dist/src/jobs/redis-error-handler
+    join(process.cwd(), 'dist', 'src', 'jobs', 'redis-error-handler'), // root dist
+    join(__dirname, '..', 'dist', 'src', 'jobs', 'redis-error-handler'), // relative
+  ];
+
+  for (const redisHandlerPath of redisHandlerPaths) {
     try {
-      const redisHandlerPath = join(process.cwd(), 'dist', 'src', 'jobs', 'redis-error-handler');
       const redisHandler = require(redisHandlerPath);
       setupRedisErrorHandling = redisHandler?.setupRedisErrorHandling;
-    } catch (e3) {
-      // Redis handler not found - that's ok, continue
+      if (setupRedisErrorHandling) {
+        setupRedisErrorHandling();
+        console.log(`Redis error handler initialized from: ${redisHandlerPath}`);
+        break;
+      }
+    } catch (e) {
+      // Try next path
+      continue;
     }
-  }
-  if (setupRedisErrorHandling) {
-    setupRedisErrorHandling();
-    console.log('Redis error handler initialized');
   }
 } catch (e) {
   // Redis setup is optional - continue without it

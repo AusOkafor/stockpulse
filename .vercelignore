@@ -1,6 +1,7 @@
 # Backend-specific Vercel ignore
 
-# Source files (only dist is needed)
+# Source files (only dist is needed for serverless)
+# NOTE: dist/ must NOT be ignored - it's needed for serverless function
 src/
 !src/database/data-source.ts
 !src/migrations/

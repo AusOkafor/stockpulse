@@ -5,7 +5,8 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",
-    "vercel-build": "npm run build",
+    "vercel-build": "npm run build && npm run copy-dist-to-api",
+    "copy-dist-to-api": "node scripts/copy-dist-to-api.js",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
