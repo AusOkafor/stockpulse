@@ -16,7 +16,8 @@ async function bootstrap(): Promise<express.Application> {
   // dist/ is copied to api/dist/ during vercel-build, so it's at ./dist/app.module from api/index.js
   // Use require() at runtime (not import) to avoid TypeScript checking during build
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { AppModule } = require('../dist/app.module');
+  const { AppModule } = require('./dist/app.module');
+
 
 
   const { NestFactory } = await import('@nestjs/core');
