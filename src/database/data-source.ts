@@ -68,7 +68,7 @@ export const getDataSourceOptions = (configService: ConfigService): DataSourceOp
       entities: entities,
       synchronize: false, // Never use synchronize in production
       logging: configService.get<string>('NODE_ENV') === 'development',
-      migrations: [join(__dirname, '../migrations', '*.js')],
+      migrations: [], // Migrations are run manually via CLI, not in serverless runtime
       migrationsTableName: 'migrations',
       migrationsRun: false, // Run migrations manually
       // Connection pooling for serverless
@@ -90,7 +90,7 @@ export const getDataSourceOptions = (configService: ConfigService): DataSourceOp
     entities: entities,
     synchronize: false, // Never use synchronize in production
     logging: configService.get<string>('NODE_ENV') === 'development',
-    migrations: [join(__dirname, '../migrations', '*.js')],
+    migrations: [], // Migrations are run manually via CLI, not in serverless runtime
     migrationsTableName: 'migrations',
     migrationsRun: false, // Run migrations manually
     // Connection pooling for serverless

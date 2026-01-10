@@ -89,16 +89,25 @@ async function createApp(): Promise<express.Application> {
   // Start initialization
   initializationPromise = (async () => {
     try {
-      console.log('Initializing NestJS application...');
-      console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-      console.log('POSTGRES_URL exists:', !!process.env.POSTGRES_URL);
-      console.log('NODE_ENV:', process.env.NODE_ENV);
+      console.log('[INIT] Initializing NestJS application...');
+      console.log('[INIT] Environment check:', {
+        hasDatabaseUrl: !!process.env.DATABASE_URL,
+        hasPostgresUrl: !!process.env.POSTGRES_URL,
+        hasPostgresPrismaUrl: !!process.env.POSTGRES_PRISMA_URL,
+        nodeEnv: process.env.NODE_ENV,
+        cwd: process.cwd(),
+        __dirname,
+      });
 
       const expressApp = express();
+      console.log('[INIT] Creating NestJS app with ExpressAdapter...');
+      
       const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
         logger: ['error', 'warn', 'log'],
         rawBody: true, // Enable raw body for webhook HMAC verification
       });
+
+      console.log('[INIT] NestJS app created, setting up middleware...');
 
       // NOTE: CORS is handled manually in the handler function below
       // Disable NestJS CORS to avoid conflicts with manual CORS handling
@@ -113,15 +122,21 @@ async function createApp(): Promise<express.Application> {
         }),
       );
 
-      // Initialize the app
+      console.log('[INIT] Calling app.init()...');
+      // Initialize the app (this connects to database, etc.)
       await app.init();
 
-      console.log('NestJS application initialized successfully');
+      console.log('[INIT] ✅ NestJS application initialized successfully');
       cachedApp = expressApp;
       return expressApp;
     } catch (error) {
-      console.error('Failed to initialize NestJS app:', error);
-      console.error('Error stack:', (error as Error)?.stack);
+      console.error('[INIT] ❌ Failed to initialize NestJS app');
+      console.error('[INIT] Error type:', (error as any)?.constructor?.name);
+      console.error('[INIT] Error message:', (error as Error)?.message);
+      console.error('[INIT] Error stack:', (error as Error)?.stack);
+      if ((error as any)?.cause) {
+        console.error('[INIT] Error cause:', (error as any).cause);
+      }
       initializationPromise = null; // Reset so we can retry
       throw error;
     }
