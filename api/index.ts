@@ -151,38 +151,38 @@ async function createApp(): Promise<express.Application> {
 
 /**
  * Handle CORS headers manually for serverless environment
+ * Always allow localhost for development, regardless of NODE_ENV
  */
 function setCorsHeaders(req: Request, res: Response): void {
-  const origin = req.headers.origin || '';
-  const nodeEnv = process.env.NODE_ENV || 'production';
+  const origin = req.headers.origin;
   const frontendUrl = process.env.FRONTEND_URL;
-  const isDevelopment = nodeEnv === 'development';
 
-  let allowOrigin = false;
+  let allowedOrigin: string | undefined = undefined;
 
-  // Allow requests with no origin (mobile apps, Postman, etc.)
+  // Always allow requests with no origin (mobile apps, Postman, etc.)
   if (!origin) {
-    allowOrigin = true;
+    allowedOrigin = '*';
   }
-  // Allow localhost in development
-  else if (
-    isDevelopment ||
-    origin.startsWith('http://localhost:') ||
-    origin.startsWith('http://127.0.0.1:')
-  ) {
-    allowOrigin = true;
+  // Always allow localhost (for local development)
+  else if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+    allowedOrigin = origin;
   }
   // Allow production frontend URL
   else if (frontendUrl && (origin === frontendUrl || origin.startsWith(frontendUrl))) {
-    allowOrigin = true;
+    allowedOrigin = origin;
   }
-  // Allow Vercel preview deployments
+  // Allow Vercel preview deployments (any vercel.app domain)
   else if (origin.includes('.vercel.app')) {
-    allowOrigin = true;
+    allowedOrigin = origin;
+  }
+  // For safety, allow any origin in development (you can restrict this later)
+  // Remove this in production if you want stricter control
+  else if (process.env.NODE_ENV === 'development') {
+    allowedOrigin = origin;
   }
 
-  if (allowOrigin) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  if (allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.setHeader(
       'Access-Control-Allow-Headers',
@@ -190,6 +190,7 @@ function setCorsHeaders(req: Request, res: Response): void {
     );
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Max-Age', '86400');
+    res.setHeader('Vary', 'Origin');
   }
 }
 
