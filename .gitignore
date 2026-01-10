@@ -6,6 +6,12 @@ dist/
 build/
 api/dist/  # Copied dist for Vercel serverless (created during build, not committed)
 
+# Compiled serverless function files (Vercel compiles api/index.ts automatically)
+api/*.js
+api/*.d.ts
+api/*.js.map
+!api/index.ts  # Keep the source file
+
 # Environment variables
 .env
 .env.local
