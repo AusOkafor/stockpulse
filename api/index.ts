@@ -12,11 +12,11 @@ async function bootstrap(): Promise<express.Application> {
 
   const server = express();
 
-  // Import AppModule from the correct path: dist/src/app.module
-  // NestJS preserves source directory structure: src/app.module.ts → dist/src/app.module.js
+  // Import AppModule from the correct path: dist/app.module
+  // After build: src/app.module.ts → dist/app.module.js (rootDir config flattens structure)
   // Use require() at runtime (not import) to avoid TypeScript checking during build
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { AppModule } = require('../dist/src/app.module');
+  const { AppModule } = require('../dist/app.module');
   const { NestFactory } = await import('@nestjs/core');
   const { ExpressAdapter } = await import('@nestjs/platform-express');
   const { ValidationPipe } = await import('@nestjs/common');
