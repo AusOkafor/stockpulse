@@ -14,14 +14,14 @@ const cwd = process.cwd(); // In Vercel: /var/task
 const apiDir = __dirname; // In Vercel: /var/task/api
 
 // Try multiple possible locations for the dist folder
-// In Vercel, api/ directory becomes the function root
-// So api/dist/ is accessible as ./dist/ from api/index.ts
-// Priority: relative to api/ > absolute paths > parent directory
+// In Vercel, the function root is /var/task, and api/ is a subdirectory
+// The root dist/ folder should be accessible from /var/task/dist/
+// Priority: root dist (most likely in Vercel) > api/dist > other locations
 const possiblePaths = [
-  join(apiDir, 'dist', 'src', 'app.module'), // api/dist/src/app.module (relative to api/)
+  join(cwd, 'dist', 'src', 'app.module'), // /var/task/dist/src/app.module (root dist - most likely)
+  join(apiDir, '..', 'dist', 'src', 'app.module'), // ../dist/src/app.module (relative from api/)
+  join(apiDir, 'dist', 'src', 'app.module'), // api/dist/src/app.module (if copied)
   join(__dirname, 'dist', 'src', 'app.module'), // ./dist/src/app.module (relative to compiled index.js)
-  join(cwd, 'dist', 'src', 'app.module'), // /var/task/dist/src/app.module (root dist)
-  join(apiDir, '..', 'dist', 'src', 'app.module'), // ../dist/src/app.module (parent)
 ];
 
 let lastError: Error | null = null;

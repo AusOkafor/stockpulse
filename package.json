@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",
-    "vercel-build": "npm run build && npm run copy-dist-to-api",
+    "vercel-build": "npm run build",
     "copy-dist-to-api": "node -e \"const fs=require('fs');const path=require('path');const src=path.join(process.cwd(),'dist');const dest=path.join(process.cwd(),'api','dist');if(!fs.existsSync(src)){console.error('dist folder not found:',src);process.exit(1);}const copy=(s,d)=>{fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).forEach(f=>{const sPath=path.join(s,f);const dPath=path.join(d,f);if(fs.statSync(sPath).isDirectory()){copy(sPath,dPath);}else{fs.copyFileSync(sPath,dPath);}});};copy(src,dest);console.log('Copied dist to api/dist');\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
