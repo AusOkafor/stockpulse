@@ -2,21 +2,48 @@ import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import express, { Request, Response } from 'express';
+import { join } from 'path';
 
 // Import AppModule - try compiled first (after build), fallback to source (development)
+// In Vercel, __dirname points to the compiled location (api/ directory)
+// NestJS compiles src/ to dist/src/, so the path is dist/src/app.module
 let AppModule: any;
+const distPath = join(__dirname, '..', 'dist', 'src', 'app.module');
+const srcPath = join(__dirname, '..', 'src', 'app.module');
+
 try {
-  // After Vercel build, import from dist
-  AppModule = require('../dist/app.module').AppModule;
-  console.log('Loaded AppModule from dist');
+  // After Vercel build, import from dist/src/app.module (NestJS output structure)
+  AppModule = require(distPath).AppModule;
+  console.log(`Loaded AppModule from dist: ${distPath}`);
 } catch (e) {
-  // During development or if dist doesn't exist, use source
+  console.log(`Failed to load from dist (${distPath}):`, e.message);
+  // During development or if dist doesn't exist, try alternative paths
   try {
-    AppModule = require('../src/app.module').AppModule;
-    console.log('Loaded AppModule from src');
-  } catch (e2) {
-    console.error('Failed to load AppModule from both dist and src:', e2);
-    throw new Error('Cannot load AppModule. Make sure to run npm run build first.');
+    // Try process.cwd() path (sometimes Vercel structures it differently)
+    const altPath = join(process.cwd(), 'dist', 'src', 'app.module');
+    AppModule = require(altPath).AppModule;
+    console.log(`Loaded AppModule from process.cwd: ${altPath}`);
+  } catch (e3) {
+    console.log(`Failed to load from process.cwd:`, e3.message);
+    // Last resort: try source (won't work in production but helps debug)
+    try {
+      AppModule = require(srcPath).AppModule;
+      console.log(`Loaded AppModule from src: ${srcPath}`);
+    } catch (e2) {
+      console.error('Failed to load AppModule from all paths:', {
+        distPath,
+        altPath: join(process.cwd(), 'dist', 'src', 'app.module'),
+        srcPath,
+        cwd: process.cwd(),
+        __dirname,
+        distError: e.message,
+        altError: e3.message,
+        srcError: e2.message,
+      });
+      throw new Error(
+        `Cannot load AppModule. Tried: ${distPath}, ${join(process.cwd(), 'dist', 'src', 'app.module')}, ${srcPath}. Make sure to run npm run build first.`,
+      );
+    }
   }
 }
 
@@ -24,14 +51,17 @@ try {
 try {
   let setupRedisErrorHandling: (() => void) | undefined;
   try {
-    const redisHandler = require('../dist/jobs/redis-error-handler');
+    // NestJS compiles src/jobs to dist/src/jobs
+    const redisHandlerPath = join(__dirname, '..', 'dist', 'src', 'jobs', 'redis-error-handler');
+    const redisHandler = require(redisHandlerPath);
     setupRedisErrorHandling = redisHandler?.setupRedisErrorHandling;
   } catch (e) {
     try {
-      const redisHandler = require('../src/jobs/redis-error-handler');
+      const redisHandlerPath = join(process.cwd(), 'dist', 'src', 'jobs', 'redis-error-handler');
+      const redisHandler = require(redisHandlerPath);
       setupRedisErrorHandling = redisHandler?.setupRedisErrorHandling;
-    } catch (e2) {
-      // Redis handler not found - that's ok
+    } catch (e3) {
+      // Redis handler not found - that's ok, continue
     }
   }
   if (setupRedisErrorHandling) {
