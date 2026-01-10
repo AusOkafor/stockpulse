@@ -12,11 +12,12 @@ async function bootstrap(): Promise<express.Application> {
 
   const server = express();
 
-  // Import AppModule from the correct path: dist/app.module
-  // After build: src/app.module.ts → dist/app.module.js (rootDir config flattens structure)
+  // Import AppModule from the correct path
+  // dist/ is copied to api/dist/ during vercel-build, so it's at ./dist/app.module from api/index.js
   // Use require() at runtime (not import) to avoid TypeScript checking during build
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { AppModule } = require('../dist/app.module');
+  const { AppModule } = require(join(process.cwd(), 'dist/app.module'));
+
   const { NestFactory } = await import('@nestjs/core');
   const { ExpressAdapter } = await import('@nestjs/platform-express');
   const { ValidationPipe } = await import('@nestjs/common');

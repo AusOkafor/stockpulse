@@ -4,13 +4,13 @@ node_modules/
 # Build output
 dist/
 build/
-api/dist/  # Copied dist for Vercel serverless (created during build, not committed)
+api/dist/  # Copied dist for Vercel serverless (created during vercel-build, not committed)
 
-# Compiled serverless function files (Vercel compiles api/index.ts automatically)
-api/*.js
-api/*.d.ts
-api/*.js.map
-!api/index.ts  # Keep the source file
+# Compiled serverless function files (Vercel compiles api/index.ts automatically, don't commit)
+api/index.js
+api/index.d.ts
+api/index.js.map
+# Note: api/index.ts is the source file and should be committed
 
 # Environment variables
 .env
