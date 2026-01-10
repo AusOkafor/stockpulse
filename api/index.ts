@@ -14,22 +14,34 @@ const cwd = process.cwd(); // In Vercel: /var/task
 const apiDir = __dirname; // In Vercel: /var/task/api
 
 // Try multiple possible locations for the dist folder
-// Priority: api/dist (copied during build) > root dist > other locations
+// In Vercel, api/ directory becomes the function root
+// So api/dist/ is accessible as ./dist/ from api/index.ts
+// Priority: relative to api/ > absolute paths > parent directory
 const possiblePaths = [
-  join(apiDir, 'dist', 'src', 'app.module'), // Copied during build: api/dist/src/app.module
-  join(cwd, 'dist', 'src', 'app.module'), // Root dist: /var/task/dist/src/app.module
-  join(apiDir, '..', 'dist', 'src', 'app.module'), // Relative to api: ../dist/src/app.module
+  join(apiDir, 'dist', 'src', 'app.module'), // api/dist/src/app.module (relative to api/)
+  join(__dirname, 'dist', 'src', 'app.module'), // ./dist/src/app.module (relative to compiled index.js)
+  join(cwd, 'dist', 'src', 'app.module'), // /var/task/dist/src/app.module (root dist)
+  join(apiDir, '..', 'dist', 'src', 'app.module'), // ../dist/src/app.module (parent)
 ];
 
 let lastError: Error | null = null;
 for (const modulePath of possiblePaths) {
   try {
-    AppModule = require(modulePath).AppModule;
-    console.log(`✅ Loaded AppModule from: ${modulePath}`);
-    break;
+    // Try loading the module
+    const module = require(modulePath);
+    AppModule = module.AppModule || module.default?.AppModule || module;
+    if (AppModule) {
+      console.log(`✅ Loaded AppModule from: ${modulePath}`);
+      break;
+    }
   } catch (e) {
     lastError = e as Error;
-    console.log(`❌ Failed to load from ${modulePath}:`, (e as Error).message);
+    const errorMsg = (e as Error).message;
+    console.log(`❌ Failed to load from ${modulePath}:`, errorMsg.substring(0, 100));
+    // Don't continue if it's a different error (like syntax error)
+    if (!errorMsg.includes('Cannot find module')) {
+      console.error(`Unexpected error loading from ${modulePath}:`, errorMsg);
+    }
     continue;
   }
 }
@@ -50,9 +62,10 @@ if (!AppModule) {
 try {
   let setupRedisErrorHandling: (() => void) | undefined;
   const redisHandlerPaths = [
-    join(__dirname, 'dist', 'src', 'jobs', 'redis-error-handler'), // api/dist/src/jobs/redis-error-handler
+    join(apiDir, 'dist', 'src', 'jobs', 'redis-error-handler'), // api/dist/src/jobs/redis-error-handler
+    join(__dirname, 'dist', 'src', 'jobs', 'redis-error-handler'), // ./dist/src/jobs/redis-error-handler
     join(process.cwd(), 'dist', 'src', 'jobs', 'redis-error-handler'), // root dist
-    join(__dirname, '..', 'dist', 'src', 'jobs', 'redis-error-handler'), // relative
+    join(apiDir, '..', 'dist', 'src', 'jobs', 'redis-error-handler'), // ../dist/src/jobs/redis-error-handler
   ];
 
   for (const redisHandlerPath of redisHandlerPaths) {

@@ -1,10 +1,13 @@
 # Backend-specific Vercel ignore
 
 # Source files (only dist is needed for serverless)
-# NOTE: dist/ must NOT be ignored - it's needed for serverless function
+# NOTE: dist/ and api/dist/ must NOT be ignored - they're needed for serverless function
 src/
 !src/database/data-source.ts
 !src/migrations/
+
+# IMPORTANT: api/dist/ contains the compiled NestJS app - MUST be included
+# Do NOT ignore api/dist/ - it's created during vercel-build
 
 # Documentation (not needed in deployment)
 *.md
