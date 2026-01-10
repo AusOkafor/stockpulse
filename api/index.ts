@@ -62,6 +62,7 @@ async function createApp(): Promise<express.Application> {
     try {
       console.log('Initializing NestJS application...');
       console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+      console.log('POSTGRES_URL exists:', !!process.env.POSTGRES_URL);
       console.log('NODE_ENV:', process.env.NODE_ENV);
       
       const expressApp = express();
@@ -139,3 +140,4 @@ export default async function handler(req: express.Request, res: express.Respons
     }
   }
 }
+
