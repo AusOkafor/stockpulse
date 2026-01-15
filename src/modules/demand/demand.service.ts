@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { DemandRequest, DemandStatus } from '../../entities/demand-request.entity';
+import { In, Repository } from 'typeorm';
+import { DemandChannel, DemandRequest, DemandStatus } from '../../entities/demand-request.entity';
 import { Product } from '../../entities/product.entity';
 import { Variant } from '../../entities/variant.entity';
 import { RecoveryLink } from '../../entities/recovery-link.entity';
 import { OrderAttribution } from '../../entities/order-attribution.entity';
+import { Shop } from '../../entities/shop.entity';
+import { ShopSettings } from '../../entities/shop-settings.entity';
 import { NotificationService } from '../notification/notification.service';
 import { PlanService } from '../plan/plan.service';
 import * as crypto from 'crypto';
@@ -48,6 +50,10 @@ export class DemandService {
     private readonly recoveryLinkRepository: Repository<RecoveryLink>,
     @InjectRepository(OrderAttribution)
     private readonly orderAttributionRepository: Repository<OrderAttribution>,
+    @InjectRepository(Shop)
+    private readonly shopRepository: Repository<Shop>,
+    @InjectRepository(ShopSettings)
+    private readonly shopSettingsRepository: Repository<ShopSettings>,
     private readonly notificationService: NotificationService,
     private readonly planService: PlanService,
   ) {}
@@ -73,6 +79,136 @@ export class DemandService {
       return '•••' + phone.slice(-4);
     }
     return phone.slice(0, -4) + '•••' + phone.slice(-4);
+  }
+
+  normalizeShopDomain(domain: string): string {
+    const normalized = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (!normalized.endsWith('.myshopify.com')) {
+      return `${normalized}.myshopify.com`.toLowerCase();
+    }
+    return normalized.toLowerCase();
+  }
+
+  async getWidgetData(input: { shopDomain: string; variantId: string }) {
+    const shop = await this.shopRepository.findOne({
+      where: { shopifyDomain: input.shopDomain },
+    });
+
+    if (!shop) {
+      throw new NotFoundException(`Shop not found: ${input.shopDomain}`);
+    }
+
+    const variant = await this.variantRepository
+      .createQueryBuilder('variant')
+      .innerJoinAndSelect('variant.product', 'product')
+      .where('variant.shopifyVariantId = :variantId OR variant.id = :variantId', {
+        variantId: input.variantId,
+      })
+      .andWhere('product.shopId = :shopId', { shopId: shop.id })
+      .getOne();
+
+    if (!variant) {
+      throw new NotFoundException(`Variant not found for shop: ${input.variantId}`);
+    }
+
+    const demandCount = await this.demandRequestRepository.count({
+      where: {
+        variantId: variant.id,
+        status: In([DemandStatus.PENDING, DemandStatus.NOTIFIED]),
+      },
+    });
+
+    const settings = await this.shopSettingsRepository.findOne({
+      where: { shopId: shop.id },
+    });
+
+    return {
+      stockRemaining: variant.inventoryQuantity,
+      demandCount,
+      restockExpected: null,
+      widgetConfig: {
+        autoNotifyOnRestock: settings?.autoNotifyOnRestock ?? false,
+      },
+    };
+  }
+
+  async createWidgetDemandRequest(input: {
+    shopDomain: string;
+    variantId: string;
+    contact: string;
+    channel: string;
+  }) {
+    const shop = await this.shopRepository.findOne({
+      where: { shopifyDomain: input.shopDomain },
+    });
+
+    if (!shop) {
+      throw new NotFoundException(`Shop not found: ${input.shopDomain}`);
+    }
+
+    const variant = await this.variantRepository
+      .createQueryBuilder('variant')
+      .innerJoinAndSelect('variant.product', 'product')
+      .where('variant.shopifyVariantId = :variantId OR variant.id = :variantId', {
+        variantId: input.variantId,
+      })
+      .andWhere('product.shopId = :shopId', { shopId: shop.id })
+      .getOne();
+
+    if (!variant) {
+      throw new NotFoundException(`Variant not found for shop: ${input.variantId}`);
+    }
+
+    const channel = this.normalizeChannel(input.channel);
+    this.validateContact(input.contact, channel);
+
+    const existing = await this.demandRequestRepository.findOne({
+      where: {
+        variantId: variant.id,
+        contact: input.contact,
+        status: DemandStatus.PENDING,
+      },
+    });
+
+    if (existing) {
+      return { success: true, id: existing.id, message: 'Already on waitlist' };
+    }
+
+    const request = this.demandRequestRepository.create({
+      variantId: variant.id,
+      contact: input.contact,
+      channel,
+      status: DemandStatus.PENDING,
+    });
+
+    const saved = await this.demandRequestRepository.save(request);
+    return { success: true, id: saved.id, message: 'Waitlist request created' };
+  }
+
+  private normalizeChannel(channel: string): DemandChannel {
+    const normalized = channel.trim().toUpperCase();
+    if (normalized === 'EMAIL') {
+      return DemandChannel.EMAIL;
+    }
+    if (normalized === 'WHATSAPP' || normalized === 'SMS' || normalized === 'PHONE') {
+      return DemandChannel.WHATSAPP;
+    }
+    throw new BadRequestException('Unsupported channel');
+  }
+
+  private validateContact(contact: string, channel: DemandChannel) {
+    if (channel === DemandChannel.EMAIL) {
+      const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
+      if (!isValid) {
+        throw new BadRequestException('Invalid email address');
+      }
+      return;
+    }
+
+    const isValid = /^[+\d][\d\s\-().]{6,}$/.test(contact);
+    if (!isValid) {
+      throw new BadRequestException('Invalid phone number');
+    }
   }
 
   async getProductWaitlist(productId: string): Promise<ProductWaitlistResponse> {
