@@ -175,8 +175,9 @@ async function seed() {
 
     // 1. Create Shop
     console.log('🏪 Creating shop...');
+    const seedShopDomain = process.env.SEED_SHOP_DOMAIN || 'ausdevtheme.myshopify.com';
     const shop = dataSource.getRepository(Shop).create({
-      shopifyDomain: 'example-store.myshopify.com',
+      shopifyDomain: seedShopDomain,
       accessToken: 'encrypted_token_placeholder_' + crypto.randomBytes(16).toString('hex'),
     });
     const savedShop = await dataSource.getRepository(Shop).save(shop);
