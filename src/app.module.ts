@@ -57,7 +57,24 @@ import { getDataSourceOptions } from './database/data-source';
       },
       inject: [ConfigService],
       dataSourceFactory: async (options) => {
-        const dataSource = new DataSource(options);
+        const safeOptions =
+          options ??
+          ({
+            type: 'postgres',
+            host: 'localhost',
+            port: 5432,
+            username: 'user',
+            password: 'password',
+            database: 'stockpulse',
+            entities: [],
+            synchronize: false,
+            logging: false,
+            migrations: [],
+            migrationsRun: false,
+            extra: { max: 1 },
+          } as const);
+
+        const dataSource = new DataSource(safeOptions);
         try {
           await dataSource.initialize();
         } catch (initError) {
