@@ -48,9 +48,10 @@ for (const envPath of envPaths) {
 export const getDataSourceOptions = (configService: ConfigService): DataSourceOptions => {
   // Support multiple environment variable names (Vercel uses POSTGRES_URL, others use DATABASE_URL)
   // IMPORTANT: Don't use POSTGRES_PRISMA_URL (Prisma Accelerate proxy) - use direct connection
-  const databaseUrl = 
+  const databaseUrl =
+    configService.get<string>('POSTGRES_URL_NON_POOLING') || // Vercel Postgres direct (non-pooled)
     configService.get<string>('DATABASE_URL') ||
-    configService.get<string>('POSTGRES_URL') ||  // Vercel Postgres direct connection
+    configService.get<string>('POSTGRES_URL') || // Vercel Postgres default
     configService.get<string>('DB_URL');
   
   // Skip Prisma Accelerate URLs - they don't work with TypeORM
@@ -69,6 +70,7 @@ export const getDataSourceOptions = (configService: ConfigService): DataSourceOp
     }
     
     const url = new URL(normalizedUrl);
+    const requiresSsl = url.searchParams.get('sslmode') === 'require';
     return {
       type: 'postgres',
       host: url.hostname,
@@ -76,6 +78,7 @@ export const getDataSourceOptions = (configService: ConfigService): DataSourceOp
       username: url.username,
       password: url.password,
       database: url.pathname.slice(1), // Remove leading slash
+      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
       entities: entities,
       synchronize: false, // Never use synchronize in production
       logging: configService.get<string>('NODE_ENV') === 'development',
@@ -117,16 +120,18 @@ export const getDataSourceOptions = (configService: ConfigService): DataSourceOp
 // Parse DATABASE_URL, POSTGRES_URL (Vercel), or DB_URL if available, otherwise use individual env vars
 function getDataSourceForCLI(): DataSourceOptions {
   // Support multiple environment variable names (Vercel uses POSTGRES_URL, others use DATABASE_URL)
-  const databaseUrl = 
+  const databaseUrl =
+    process.env.POSTGRES_URL_NON_POOLING || // Vercel Postgres direct (non-pooled)
     process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||  // Vercel Postgres default
-    process.env.POSTGRES_PRISMA_URL ||  // Vercel Prisma Postgres
+    process.env.POSTGRES_URL || // Vercel Postgres default
+    process.env.POSTGRES_PRISMA_URL || // Vercel Prisma Postgres
     process.env.DB_URL;
   
   if (databaseUrl) {
     // Normalize postgres:// to postgresql:// for URL parsing
     const normalizedUrl = databaseUrl.replace(/^postgres:\/\//, 'postgresql://');
     const url = new URL(normalizedUrl);
+    const requiresSsl = url.searchParams.get('sslmode') === 'require';
     return {
       type: 'postgres',
       host: url.hostname,
@@ -134,6 +139,7 @@ function getDataSourceForCLI(): DataSourceOptions {
       username: url.username,
       password: url.password,
       database: url.pathname.slice(1),
+      ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
       entities: [join(__dirname, '../entities', '*.entity{.ts,.js}')],
       migrations: [join(__dirname, '../migrations', '*.{.ts,.js}')],
       synchronize: false,
