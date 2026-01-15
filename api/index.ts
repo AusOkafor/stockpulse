@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import express from 'express';
 import type { Request, Response } from 'express';
-import { join } from 'path';
-
 let cachedServer: express.Application | null = null;
 
 async function bootstrap(): Promise<express.Application> {
