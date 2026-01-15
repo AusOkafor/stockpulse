@@ -11,10 +11,33 @@ async function bootstrap(): Promise<express.Application> {
   const server = express();
 
   // Import AppModule from the correct path
-  // dist/ is copied to api/dist/ during vercel-build, so it's at ./dist/app.module from api/index.js
+  // Prefer api/dist (copied during vercel-build), fallback to root dist if bundled there
   // Use require() at runtime (not import) to avoid TypeScript checking during build
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { AppModule } = require('./dist/app.module');
+  const possibleModulePaths = ['./dist/app.module', '../dist/app.module'];
+  let AppModule: any;
+
+  for (const modulePath of possibleModulePaths) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const moduleRef = require(modulePath);
+      AppModule = moduleRef.AppModule || moduleRef.default?.AppModule || moduleRef;
+      if (AppModule) {
+        console.log(`[INIT] ✅ Loaded AppModule from: ${modulePath}`);
+        break;
+      }
+    } catch (error) {
+      console.warn(`[INIT] ⚠️ Failed to load AppModule from ${modulePath}:`, {
+        message: (error as Error)?.message,
+      });
+    }
+  }
+
+  if (!AppModule) {
+    throw new Error(
+      `Cannot load AppModule. Tried: ${possibleModulePaths.join(', ')}. ` +
+        `cwd=${process.cwd()} __dirname=${__dirname}`,
+    );
+  }
 
 
 
