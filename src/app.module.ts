@@ -1,4 +1,4 @@
-import { Module, DynamicModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -61,7 +61,7 @@ import { getDataSourceOptions } from './database/data-source';
     }),
     // JobsModule - Redis is optional
     // Will fail gracefully if Redis is unavailable
-    JobsModule,
+    JobsModule.forRoot(),
     AuthModule,
     ShopModule,
     ProductModule,
