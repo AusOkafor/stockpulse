@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
@@ -28,14 +29,11 @@ import { getDataSourceOptions } from './database/data-source';
       useFactory: (configService: ConfigService) => {
         try {
           const options = getDataSourceOptions(configService);
-          // Add retry logic for serverless cold starts
           return {
             ...options,
-            // Retry connection on failure
-            retryAttempts: 3,
-            retryDelay: 3000,
-            // Don't auto-connect - connect lazily
-            // This is handled by NestJS TypeORM module
+            // Serverless: fail fast, don't crash the process
+            retryAttempts: 0,
+            retryDelay: 0,
           };
         } catch (error) {
           console.error('[AppModule] Failed to get DataSource options:', error);
@@ -58,6 +56,17 @@ import { getDataSourceOptions } from './database/data-source';
         }
       },
       inject: [ConfigService],
+      dataSourceFactory: async (options) => {
+        const dataSource = new DataSource(options);
+        try {
+          await dataSource.initialize();
+        } catch (initError) {
+          console.error('[TypeOrmModule] Failed to connect. Continuing without DB.', {
+            message: (initError as Error)?.message,
+          });
+        }
+        return dataSource;
+      },
     }),
     // JobsModule - Redis is optional
     // Will fail gracefully if Redis is unavailable
