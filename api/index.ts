@@ -13,7 +13,12 @@ async function bootstrap(): Promise<express.Application> {
   // Import AppModule from the correct path
   // Prefer api/dist (copied during vercel-build), fallback to root dist if bundled there
   // Use require() at runtime (not import) to avoid TypeScript checking during build
-  const possibleModulePaths = ['./dist/app.module', '../dist/app.module'];
+  const possibleModulePaths = [
+    './dist/app.module',
+    './dist/src/app.module',
+    '../dist/app.module',
+    '../dist/src/app.module',
+  ];
   let AppModule: any;
 
   for (const modulePath of possibleModulePaths) {
