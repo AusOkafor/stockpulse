@@ -1,8 +1,7 @@
 # Backend-specific Vercel ignore
 
-# Source files (only dist is needed for serverless)
+# Source files are required for build output on Vercel
 # NOTE: dist/ must NOT be ignored - it's needed for serverless function
-src/
 
 # IMPORTANT: api/index.ts is a serverless function - Vercel compiles it automatically
 # Do NOT compile api/ with TypeScript - it's handled by Vercel
