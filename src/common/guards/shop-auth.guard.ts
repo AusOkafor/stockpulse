@@ -19,21 +19,18 @@ import { Shop } from '../../entities/shop.entity';
 @Injectable()
 export class ShopAuthGuard implements CanActivate {
   private readonly logger = new Logger(ShopAuthGuard.name);
-  private readonly isDevelopment: boolean;
-
   constructor(
     @InjectRepository(Shop)
     private readonly shopRepository: Repository<Shop>,
   ) {
-    this.isDevelopment = process.env.NODE_ENV === 'development';
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse();
 
-    // Development mode: Allow bypass with DEV_SHOP
-    if (this.isDevelopment && process.env.DEV_SHOP) {
+    // Allow bypass with DEV_SHOP (useful for staging/production testing)
+    if (process.env.DEV_SHOP) {
       const devShopDomain = process.env.DEV_SHOP;
       let shop = await this.shopRepository.findOne({
         where: { shopifyDomain: devShopDomain },
