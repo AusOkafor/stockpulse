@@ -44,8 +44,6 @@ async function bootstrap(): Promise<express.Application> {
     );
   }
 
-
-
   const { NestFactory } = await import('@nestjs/core');
   const { ExpressAdapter } = await import('@nestjs/platform-express');
   const { ValidationPipe } = await import('@nestjs/common');
@@ -91,6 +89,9 @@ async function bootstrap(): Promise<express.Application> {
 function setCorsHeaders(req: Request, res: Response): void {
   const origin = req.headers.origin;
   const frontendUrl = process.env.FRONTEND_URL;
+  const defaultAllowedOrigins = new Set([
+    'https://stockpulse-ui.vercel.app',
+  ]);
 
   let allowedOrigin: string | undefined = undefined;
 
@@ -103,7 +104,10 @@ function setCorsHeaders(req: Request, res: Response): void {
     allowedOrigin = origin;
   }
   // Allow production frontend URL
-  else if (frontendUrl && (origin === frontendUrl || origin.startsWith(frontendUrl))) {
+  else if (
+    (frontendUrl && (origin === frontendUrl || origin.startsWith(frontendUrl))) ||
+    defaultAllowedOrigins.has(origin)
+  ) {
     allowedOrigin = origin;
   }
   // Allow Vercel preview deployments (any vercel.app domain)
